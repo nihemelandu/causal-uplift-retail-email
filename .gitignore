@@ -1,0 +1,19 @@
+# Data — raw data is never committed to GitHub
+data/raw/
+data/interim/
+data/processed/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
