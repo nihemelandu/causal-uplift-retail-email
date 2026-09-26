@@ -1,5 +1,7 @@
 ## Business Problem Statement
 
+Causal Uplift Modeling for Retail Email Campaign Optimization
+
 Retail email campaigns are often sent to broad customer segments, resulting in marketing 
 spend on customers who would have made a purchase even without receiving the email. In some 
 cases, contacting the wrong customers can actively reduce purchase likelihood, making precise 
