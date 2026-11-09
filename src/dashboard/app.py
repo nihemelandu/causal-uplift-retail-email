@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # repo root, so `evaluation` can be imported
 from evaluation.base import EvaluationResult  # noqa: E402
 
-RESULTS_DIR = ROOT / "results"
+RESULTS_DIR = ROOT.parent / "results"
 CI_LOW, CI_HIGH = "_ci_low", "_ci_high"
 
 st.set_page_config(page_title="Who should we email?", layout="wide")
@@ -99,7 +99,7 @@ def curve_chart(curves: dict, names: list, bands: dict):
 st.title("Who should we email?")
 st.caption("Finding the customers an email actually persuades, not those who would buy anyway.")
 
-results, errors = load_results()
+results, errors = load_results(folder_signature())
 for fname, msg in errors.items():
     st.warning(f"Could not read `{fname}`: {msg}")
 if not results:
