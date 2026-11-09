@@ -28,7 +28,13 @@ st.set_page_config(page_title="Who should we email?", layout="wide")
 
 # ---- helpers ---------------------------------------------------------------------
 @st.cache_data(ttl=300)
-def load_results(results_dir: str = str(RESULTS_DIR)):
+def folder_signature(results_dir=RESULTS_DIR) -> tuple:
+    """Changes whenever a result file is added, removed or modified, so the cache below never goes stale."""
+    return tuple((p.name, p.stat().st_mtime_ns) for p in sorted(Path(results_dir).glob("*.json")))
+
+
+@st.cache_data
+def load_results(signature: tuple, results_dir: str = str(RESULTS_DIR)):
     """Return ({file name: EvaluationResult as dict}, {file name: error message})."""
     ok, bad = {}, {}
     for path in sorted(Path(results_dir).glob("*.json")):
