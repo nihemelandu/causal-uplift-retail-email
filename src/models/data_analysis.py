@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import json
 
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
@@ -46,38 +47,38 @@ print("p (all):  ", t.mean())
 print("p (train):", t_train.mean())
 print("p (test): ", t_test.mean())
 
-Slearner_rf_scores = SLearner(base_learner=RandomForestClassifier(n_estimators=100, random_state=42))
-Slearner_rf_scores.fit(X_train, t_train, y_train)
+Slearner_rf = SLearner(base_learner=RandomForestClassifier(n_estimators=100, random_state=42))
+Slearner_rf.fit(X_train, t_train, y_train)
 
-scores_train = Slearner_rf_scores.predict_uplift(X_train)
-scores_test = Slearner_rf_scores.predict_uplift(X_test)
+scores_train = Slearner_rf.predict_uplift(X_train)
+scores_test = Slearner_rf.predict_uplift(X_test)
 
 # %% Cell 5: Analyze uplift scores
 print("========== ARRAY OVERVIEW ==========")
-print(f"Shape: {Slearner_rf_scores.shape}")
-print(f"Size: {Slearner_rf_scores.size:,}")
-print(f"Data type: {Slearner_rf_scores.dtype}")
+print(f"Shape: {scores_test.shape}")
+print(f"Size: {scores_test.size:,}")
+print(f"Data type: {scores_test.dtype}")
 
 print("\n========== STATISTICS ==========")
-print("Minimum:", np.min(Slearner_rf_scores))
-print("Maximum:", np.max(Slearner_rf_scores))
-print("Mean:", np.mean(Slearner_rf_scores))
-print("Median:", np.median(Slearner_rf_scores))
-print("Standard deviation:", np.std(Slearner_rf_scores))
-print("25th percentile:", np.percentile(Slearner_rf_scores, 25))
-print("75th percentile:", np.percentile(Slearner_rf_scores, 75))
+print("Minimum:", np.min(scores_test))
+print("Maximum:", np.max(scores_test))
+print("Mean:", np.mean(scores_test))
+print("Median:", np.median(scores_test))
+print("Standard deviation:", np.std(scores_test))
+print("25th percentile:", np.percentile(scores_test, 25))
+print("75th percentile:", np.percentile(scores_test, 75))
 
 print("\n========== VALUE DISTRIBUTION ==========")
-total = Slearner_rf_scores.size
-zeros = np.count_nonzero(Slearner_rf_scores == 0)
-nonzeros = np.count_nonzero(Slearner_rf_scores)
+total = scores_test.size
+zeros = np.count_nonzero(scores_test == 0)
+nonzeros = np.count_nonzero(scores_test)
 print("Total elements:", total)
 print("Zeros:", zeros)
 print("Nonzeros:", nonzeros)
 print("Percentage zeros:", zeros / total * 100)
 
 print("\n========== MOST FREQUENT VALUES ==========")
-values, counts = np.unique(Slearner_rf_scores, return_counts=True)
+values, counts = np.unique(scores_test, return_counts=True)
 indices = np.argsort(values)[::-1][:10]
 
 for i in indices:
@@ -89,9 +90,31 @@ qini_ev = QiniEvaluator()
 res_test = qini_ev.evaluate(scores_test, y_test, t_test)
 res_train = qini_ev.evaluate(scores_train, y_train, t_train)
 
+results_dir = Path(__file__).resolve().parent.parent.parent / "results"   # adjust to your repo root
+results_dir.mkdir(exist_ok=True)
+for label, res in [("test", res_test), ("train", res_train)]:
+    path = results_dir / f"s_learner_rf__{label}__QiniEvaluator.json"
+    path.write_text(json.dumps(res.to_dict(), indent=2, allow_nan=False))
+    print("saved", path)
+
+# %% Cell 7: plot Qini curve    
+
+def plot_qini(res, label, ax):
+    c = res.curves
+    x = [0.0] + c["qini"]["x"]
+    y = [0.0] + c["qini"]["y"]            # the curve starts at the origin
+    lo = [0.0] + c["qini_ci_low"]["y"]
+    hi = [0.0] + c["qini_ci_high"]["y"]
+    ax.plot(x, y, marker="o", label=label)
+    ax.fill_between(x, lo, hi, alpha=0.2)
+
 fig, ax = plt.subplots()           # creates the figure and the axis
 plot_qini(res_test, "test", ax)    # draws the test curve on that axis
 plot_qini(res_train, "train", ax)  # draws the train curve on the same axis
+
+ax.set_xlabel("Share of population treated (ranked by predicted uplift)")
+ax.set_ylabel("Qini value (incremental gain)")
 ax.legend()
 plt.show()
+
 # %%
