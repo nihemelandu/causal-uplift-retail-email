@@ -224,6 +224,3 @@ else:
     if res["notes"]:
         st.caption(res["notes"])
     RENDERERS.get(choice, render_default)(res)
-
-if len(results) > 1:
-    render_compare(results)
