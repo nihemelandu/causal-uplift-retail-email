@@ -170,22 +170,6 @@ def render_curves(curves: dict):
         st.altair_chart(curve_chart(curves, names, {n: ci_c[n] for n in names if n in ci_c}))
 
 
-def render_compare(results: dict):
-    """Overlay one named curve from several results."""
-    st.subheader("Compare results")
-    curve_names = sorted({c for r in results.values() for c in split_ci(r["curves"])[0]})
-    if curve_names:
-        pick = st.selectbox("Curve", curve_names)
-        have = [n for n, r in results.items() if pick in r["curves"]]
-        chosen = st.multiselect("Results", have, default=have)
-        if chosen:
-            frames = [pd.DataFrame({"x": num(results[n]["curves"][pick]["x"]), "result": n,
-                                    "y": num(results[n]["curves"][pick]["y"])}) for n in chosen]
-            st.altair_chart(alt.Chart(pd.concat(frames, ignore_index=True)).mark_line(point=True).encode(
-                x=X_ENC, y=alt.Y("y:Q", title="Value"), color=alt.Color("result:N", title=None)
-            ).properties(height=340))
-
-
 # ---- layouts: one function per question ----------------------------------------------
 def render_default(res: dict):
     """Tables for dotted metric names, cards and interval table for the rest, then curves."""
@@ -199,7 +183,105 @@ def render_default(res: dict):
     render_curves(res["curves"])
 
 
-RENDERERS = {}  # e.g. RENDERERS["q3"] = render_q3, added when that question's layout is decided
+# ---- Q1 layout -------------------------------------------------------------------
+Q1_GROUPS = ["No email", "Women's email", "Men's email"]
+Q1_COLORS = ["#9e9e9e", "#e377c2", "#1f77b4"]   # grey baseline, one colour per campaign
+Q1_MEASURES = {                                  # outcome -> (title, axis format, label format)
+    "visit": ("Visit rate", "%", ".1%"),
+    "conversion": ("Purchase rate", "%", ".2%"),
+    "spend": ("Spend per customer", "$.2f", "$.2f"),
+}
+Q1_COMPARISONS = {
+    "mens_vs_control": "Men's email vs. no email",
+    "womens_vs_control": "Women's email vs. no email",
+    "mens_vs_womens": "Men's email vs. Women's email",
+}
+
+
+def q1_group_means(m: dict, outcome: str) -> list:
+    """Group means in Q1_GROUPS order: no email, Women's, Men's."""
+    return [m[f"{outcome}.mens_vs_control.control"],
+            m[f"{outcome}.womens_vs_control.treatment"],
+            m[f"{outcome}.mens_vs_control.treatment"]]
+
+
+def q1_measure_chart(df: pd.DataFrame, column: str, title: str, axis_fmt: str, label_fmt: str,
+                     show_legend: bool = False):
+    legend = alt.Legend(title=None, orient="top", symbolType="square") if show_legend else None
+    base = alt.Chart(df).encode(
+        x=alt.X("group:N", sort=Q1_GROUPS, title=None, axis=alt.Axis(labels=False, ticks=False)),
+        y=alt.Y(f"{column}:Q", title=None, scale=alt.Scale(domain=[0, df[column].max() * 1.15]),
+                axis=alt.Axis(format=axis_fmt)),
+        color=alt.Color("group:N", scale=alt.Scale(domain=Q1_GROUPS, range=Q1_COLORS), legend=legend),
+    )
+    bars = base.mark_bar()
+    labels = base.mark_text(dy=-8, fontWeight="bold", color="black").encode(
+        text=alt.Text(f"{column}:Q", format=label_fmt))
+    return (bars + labels).properties(title=title, width=190, height=280)
+
+
+def q1_uplift_table(m: dict) -> pd.DataFrame:
+    """One row per measure and comparison: uplift, 95% interval, p-value, in the units a reader thinks in."""
+    rows = []
+    for outcome, (name, _, _) in Q1_MEASURES.items():
+        if outcome == "spend":
+            f = lambda v: f"{'+' if v >= 0 else '-'}${abs(v):.2f}"
+        else:
+            f = lambda v: f"{v * 100:+.2f} pp"
+        for key, label in Q1_COMPARISONS.items():
+            p = m[f"{outcome}.{key}.p_value"]
+            rows.append({"Measure": name, "Comparison": label,
+                         "Uplift": f(m[f"{outcome}.{key}.diff"]),
+                         "95% confidence interval": f"[{f(m[f'{outcome}.{key}.diff_ci_low'])}, "
+                                                    f"{f(m[f'{outcome}.{key}.diff_ci_high'])}]",
+                         "p-value": "<0.001" if p < 0.001 else f"{p:.3f}"})
+    return pd.DataFrame(rows).set_index(["Measure", "Comparison"])
+
+
+def render_q1(res: dict):
+    m = res["metrics"]
+
+    # 1. The answer
+    winners = {name: ("Men's" if m[f"{k}.mens_vs_womens.diff"] > 0 else "Women's")
+               for k, (name, _, _) in Q1_MEASURES.items()}
+    if len(set(winners.values())) == 1:
+        w = next(iter(winners.values()))
+        loser = "Women's" if w == "Men's" else "Men's"
+        st.success(f"**{w} email performed best:** it beat the {loser} email on visit rate, "
+                   "purchase rate and spend per customer.")
+    else:
+        st.info("**Mixed result:** " + "; ".join(f"the {w} email led on {n.lower()}" for n, w in winners.items()))
+
+    unclear = [name.lower() for k, (name, _, _) in Q1_MEASURES.items()
+               if m[f"{k}.mens_vs_womens.diff_ci_low"] <= 0 <= m[f"{k}.mens_vs_womens.diff_ci_high"]]
+    if unclear:
+        st.caption("The gap between the two emails on " + " and ".join(unclear) +
+                   " could be chance: its confidence interval includes zero.")
+    else:
+        st.caption("The gap between the two emails is clear on all three measures.")
+
+    # 2. The evidence: one bar chart per measure
+    panels = []
+    for i, (outcome, (title, axis_fmt, label_fmt)) in enumerate(Q1_MEASURES.items()):
+        df = pd.DataFrame({"group": Q1_GROUPS, outcome: q1_group_means(m, outcome)})
+        panels.append(q1_measure_chart(df, outcome, title, axis_fmt, label_fmt, show_legend=(i == 0)))
+    st.altair_chart(alt.hconcat(*panels))
+
+    # 3. What each email added, and how far to trust it
+    st.markdown("**What each email added**")
+    st.dataframe(q1_uplift_table(m))
+    st.caption("Uplift is the difference between the two groups. Visit and purchase rates are in percentage "
+               "points (pp); spend is dollars per customer emailed. Spend is about 99% zeros with a few large "
+               "purchases, so treat its intervals and p-values as approximate.")
+
+    # 4. Analyst details
+    with st.expander("Technical details"):
+        st.write(f"Customers: {m['n_mens']:,} Men's, {m['n_womens']:,} Women's, {m['n_control']:,} no email.")
+        st.write(f"Sample-ratio check against an equal three-way split: p = {m['srm_p_value_equal_thirds']:.3f}.")
+        st.write(res["notes"])
+
+
+RENDERERS = {"q1": render_q1}  # add RENDERERS["q3"] = render_q3 etc. as each layout is decided
 
 
 # ---- page ----------------------------------------------------------------------------
@@ -221,6 +303,6 @@ else:
     name = files[0] if len(files) == 1 else st.sidebar.selectbox("Result", files)
     res = results[name]
     st.caption(f"{res['evaluator']}  ·  {name}")
-    if res["notes"]:
+    if res["notes"] and choice not in RENDERERS:  # custom layouts place the notes themselves
         st.caption(res["notes"])
     RENDERERS.get(choice, render_default)(res)
