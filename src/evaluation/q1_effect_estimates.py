@@ -35,6 +35,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import argparse
 from scipy import stats
 
 from evaluation.base import EvaluationResult
@@ -63,8 +64,8 @@ def compare(t: pd.Series, r: pd.Series) -> dict:
             "rel_diff_pct_ci_high": rel + Z * se_rel, "p_value": p}
 
 
-def main() -> None:
-    d = pd.read_csv(PATH)
+def main(path: str = PATH) -> None:
+    d = pd.read_csv(path)
 
     metrics = {}
     for outcome in OUTCOMES:
@@ -92,4 +93,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Q1 effect estimates for the Hillstrom data.")
+    parser.add_argument("path", nargs="?", default=PATH,
+                        help=f"path to the Hillstrom CSV (default: {PATH})")
+    main(parser.parse_args().path)
