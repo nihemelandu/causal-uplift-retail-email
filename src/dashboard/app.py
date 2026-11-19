@@ -238,6 +238,70 @@ def q1_uplift_table(m: dict) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index(["Measure", "Comparison"])
 
 
+Q1_BALANCE_ROWS = {   # row key -> (label, kind): "mean" rows show mean (SD); "share" rows show a percentage
+    "recency": ("Months since last purchase, mean (SD)", "mean"),
+    "history": ("Spend in the past year, $, mean (SD)", "mean"),
+    "mens": ("Bought men's merchandise in the past year", "share"),
+    "womens": ("Bought women's merchandise in the past year", "share"),
+    "newbie": ("New customer in the past twelve months", "share"),
+    "zip_code_Rural": ("Zip code: rural", "share"),
+    "zip_code_Surburban": ("Zip code: suburban", "share"),
+    "zip_code_Urban": ("Zip code: urban", "share"),
+    "channel_Multichannel": ("Channel: multichannel", "share"),
+    "channel_Phone": ("Channel: phone", "share"),
+    "channel_Web": ("Channel: web", "share"),
+}
+
+
+def q1_relative_table(m: dict) -> pd.DataFrame:
+    """Relative uplift (uplift divided by the comparison group's average) with its 95% interval."""
+    rows = []
+    for outcome, (name, _, _) in Q1_MEASURES.items():
+        for key, label in Q1_COMPARISONS.items():
+            k = f"{outcome}.{key}.rel_diff_pct"
+            rows.append({"Measure": name, "Comparison": label,
+                         "Relative uplift": f"{m[k]:+.1f}%",
+                         "95% confidence interval": f"[{m[k + '_ci_low']:+.1f}%, {m[k + '_ci_high']:+.1f}%]"})
+    return pd.DataFrame(rows).set_index(["Measure", "Comparison"])
+
+
+def q1_analysis_notes(m: dict) -> list:
+    """Lines stating the primary outcome and how multiplicity was handled."""
+    lines = []
+    primary = [name.lower() for k, (name, _, _) in Q1_MEASURES.items() if m.get(f"primary.{k}") == 1]
+    if primary:
+        others = [name.lower() for k, (name, _, _) in Q1_MEASURES.items() if m.get(f"primary.{k}") != 1]
+        lines.append(f"**Primary outcome:** {primary[0]}, the measure closest to campaign profitability. "
+                     f"{' and '.join(others).capitalize()} are secondary.")
+    if "bonferroni_alpha" in m:
+        alpha = m["bonferroni_alpha"]
+        tests = [(name, label, m[f"{k}.{c}.p_value"]) for k, (name, _, _) in Q1_MEASURES.items()
+                 for c, label in Q1_COMPARISONS.items()]
+        failed = [(n, lab, p) for n, lab, p in tests if p >= alpha]
+        text = (f"**Multiplicity:** Bonferroni correction. Each measure has three comparisons, so a difference "
+                f"counts as significant when p < {alpha:.4f} (0.05 / {round(0.05 / alpha)}). ")
+        if failed:
+            text += f"{len(tests) - len(failed)} of {len(tests)} comparisons meet this. " + " ".join(
+                f"{lab} on {n.lower()} (p = {p:.3f}) does not." for n, lab, p in failed)
+        else:
+            text += f"All {len(tests)} comparisons meet this."
+        lines.append(text)
+    return lines
+
+
+def q1_balance_table(m: dict) -> pd.DataFrame:
+    """Baseline table: each pre-email characteristic by group, and the largest standardized difference."""
+    rows = []
+    for key, (label, kind) in Q1_BALANCE_ROWS.items():
+        def cell(arm):
+            mean = m[f"balance.{key}.{arm}"]
+            return f"{mean:.2f} ({m[f'balance.{key}.sd_{arm}']:.2f})" if kind == "mean" else f"{mean * 100:.1f}%"
+        smd = max(abs(m[f"balance.{key}.smd_womens"]), abs(m[f"balance.{key}.smd_mens"]))
+        rows.append({"Characteristic": label, "No email": cell("control"), "Women's email": cell("womens"),
+                     "Men's email": cell("mens"), "Largest standardized difference": f"{smd:.3f}"})
+    return pd.DataFrame(rows).set_index("Characteristic")
+
+
 def render_q1(res: dict):
     m = res["metrics"]
 
@@ -274,7 +338,26 @@ def render_q1(res: dict):
                "points (pp); spend is dollars per customer emailed. Spend is about 99% zeros with a few large "
                "purchases, so treat its intervals and p-values as approximate.")
 
-    # 4. Analyst details
+    # 4. Relative uplift (CONSORT item 17b: absolute and relative effect sizes for binary outcomes)
+    st.markdown("**What each email added, relative to the comparison group**")
+    st.dataframe(q1_relative_table(m))
+    st.caption("Relative uplift is the uplift divided by the comparison group's average.")
+
+    # 5. How the analysis was set up: primary outcome and multiplicity
+    for line in q1_analysis_notes(m):
+        st.markdown(line)
+
+    # 6. Were the groups alike before the emails? (CONSORT item 15: baseline table, no significance tests)
+    if any(k.startswith("balance.") for k in m):
+        st.markdown("**Were the groups alike before the emails?**")
+        st.dataframe(q1_balance_table(m))
+        st.caption("Each cell is the group average (standard deviation) or the share of customers. The "
+                   "standardized difference is the gap between an email group and the no-email group divided by "
+                   "the pooled standard deviation; below about 0.1 is conventionally treated as balanced. No "
+                   "significance tests are shown: with random allocation, any difference at the start is chance "
+                   "(CONSORT 2010).")
+
+    # 7. Analyst details
     with st.expander("Technical details"):
         st.write(f"Customers: {m['n_mens']:,} Men's, {m['n_womens']:,} Women's, {m['n_control']:,} no email.")
         st.write(f"Sample-ratio check against an equal three-way split: p = {m['srm_p_value_equal_thirds']:.3f}.")
@@ -286,7 +369,7 @@ RENDERERS = {"q1": render_q1}  # add RENDERERS["q3"] = render_q3 etc. as each la
 
 # ---- page ----------------------------------------------------------------------------
 st.title("Who should we email?")
-st.caption("Finding the customers an email actually persuades, not those who would buy anyway.")
+st.caption("Finding the customers an email actually persuades, not those who would buy anyone.")
 
 results, errors = load_results(folder_signature())
 for fname, msg in errors.items():

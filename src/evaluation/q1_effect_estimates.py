@@ -23,10 +23,20 @@ one table per outcome):
     p_value                   two-sided Welch t-test
 Units: visit and conversion are proportions, spend is dollars per customer.
 Also saved: n_mens, n_womens, n_control and srm_p_value_equal_thirds (sample-ratio check against
-an equal three-way split).
+an equal three-way split), and, for the dashboard's reporting sections:
+    primary.<outcome>        1 for the primary outcome, 0 for the others
+    bonferroni_alpha         0.05 divided by the three comparisons made for each measure
+    balance.<row>.<stat>     baseline table, one row per pre-email characteristic (a 0/1 row for each level
+                             of a category). control / womens / mens = group mean (a share, for 0/1 rows);
+                             sd_control / sd_womens / sd_mens = group standard deviation (continuous rows
+                             only); smd_womens / smd_mens = standardized difference vs the no-email group.
+                             No significance tests: with random allocation any baseline difference is chance
+                             (CONSORT 2010, item 15).
 
 Method: Welch t-test and normal-approximation CIs; the relative CI uses the delta method. Spend is
-about 99% zeros with a heavy right tail, so read its intervals as approximate.
+about 99% zeros with a heavy right tail, so read its intervals as approximate. Multiplicity: Bonferroni,
+with three comparisons per measure (alpha = 0.05 / 3). The primary outcome is spend per customer, the
+measure closest to campaign profitability (Radcliffe, 2008, section 3).
 
 Run from the repo root:  python -m evaluation.q1_effect_estimates
 """
@@ -43,9 +53,15 @@ from evaluation.base import EvaluationResult
 PATH = "hillstrom_raw.csv"                      # the Hillstrom CSV; change to its location
 OUT_FILE = "results/q1_effect_estimates.json"   # must start with "q1_"
 
+PRIMARY_OUTCOME = "spend"                       # the other two outcomes are secondary
+BASELINE_CONTINUOUS = ["recency", "history"]
+BASELINE_BINARY = ["mens", "womens", "newbie"]
+BASELINE_CATEGORICAL = ["zip_code", "channel"]  # one 0/1 row per level
+
 ARM = {"mens": "Mens E-Mail", "womens": "Womens E-Mail", "control": "No E-Mail"}
 OUTCOMES = ["visit", "conversion", "spend"]
 COMPARISONS = [("mens", "control"), ("womens", "control"), ("mens", "womens")]  # (treatment, reference)
+BONFERRONI_ALPHA = 0.05 / len(COMPARISONS)      # three comparisons per measure
 Z = stats.norm.ppf(0.975)                       # 95% two-sided
 
 
@@ -64,6 +80,27 @@ def compare(t: pd.Series, r: pd.Series) -> dict:
             "rel_diff_pct_ci_high": rel + Z * se_rel, "p_value": p}
 
 
+def balance_metrics(d: pd.DataFrame) -> dict:
+    """Baseline table: each pre-email characteristic by arm, plus the standardized difference of each
+    email arm vs the no-email arm. A category becomes one 0/1 row per level."""
+    rows = {v: d[v] for v in BASELINE_CONTINUOUS + BASELINE_BINARY}
+    for v in BASELINE_CATEGORICAL:
+        for level in sorted(d[v].unique()):
+            rows[f"{v}_{level}"] = (d[v] == level).astype(int)
+
+    out = {}
+    for name, x in rows.items():
+        by_arm = {k: x[d.segment == ARM[k]] for k in ARM}
+        for k, s in by_arm.items():
+            out[f"balance.{name}.{k}"] = s.mean()
+            if name in BASELINE_CONTINUOUS:
+                out[f"balance.{name}.sd_{k}"] = s.std()
+        for k in ("womens", "mens"):
+            pooled = np.sqrt((by_arm[k].var() + by_arm["control"].var()) / 2)
+            out[f"balance.{name}.smd_{k}"] = (by_arm[k].mean() - by_arm["control"].mean()) / pooled
+    return out
+
+
 def main(path: str = PATH) -> None:
     d = pd.read_csv(path)
 
@@ -79,13 +116,20 @@ def main(path: str = PATH) -> None:
         metrics[f"n_{k}"] = v
     metrics["srm_p_value_equal_thirds"] = stats.chisquare(obs).pvalue
 
+    for outcome in OUTCOMES:
+        metrics[f"primary.{outcome}"] = int(outcome == PRIMARY_OUTCOME)
+    metrics["bonferroni_alpha"] = BONFERRONI_ALPHA
+    metrics.update(balance_metrics(d))
+
     result = EvaluationResult(
         evaluator="Q1EffectEstimates",
         metrics=metrics,
         curves={},
         notes="Welch t-test; 95% CIs (normal approximation); relative difference and its CI by the delta "
               "method, in percentage points. Differences are treatment minus reference; for "
-              "'mens_vs_womens' the reference is the Women's arm.")
+              "'mens_vs_womens' the reference is the Women's arm. Primary outcome: spend per customer "
+              "(closest to campaign profitability); visit and purchase rates are secondary. Multiplicity: "
+              "Bonferroni, three comparisons per measure (alpha = 0.05 / 3).")
 
     with open(OUT_FILE, "w") as f:
         json.dump(result.to_dict(), f, indent=2)
