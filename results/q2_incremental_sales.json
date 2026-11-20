@@ -1,0 +1,26 @@
+{
+  "evaluator": "Q2IncrementalSales",
+  "metrics": {
+    "spend.mens_vs_control.treatment": 1.422616511005773,
+    "spend.mens_vs_control.control": 0.6527893551112363,
+    "spend.mens_vs_control.diff": 0.7698271558945367,
+    "spend.mens_vs_control.diff_ci_low": 0.48514912892878354,
+    "spend.mens_vs_control.diff_ci_high": 1.0545051828602898,
+    "spend.mens_vs_control.p_value": 1.1638149682254898e-07,
+    "spend.mens_vs_control.boot_ci_low": 0.4988817012203282,
+    "spend.mens_vs_control.boot_ci_high": 1.0602987076650392,
+    "n_mens": 21307,
+    "spend.womens_vs_control.treatment": 1.0772015710478329,
+    "spend.womens_vs_control.control": 0.6527893551112363,
+    "spend.womens_vs_control.diff": 0.4244122159365966,
+    "spend.womens_vs_control.diff_ci_low": 0.16896450721722794,
+    "spend.womens_vs_control.diff_ci_high": 0.6798599246559653,
+    "spend.womens_vs_control.p_value": 0.0011293971023632523,
+    "spend.womens_vs_control.boot_ci_low": 0.17266615144014882,
+    "spend.womens_vs_control.boot_ci_high": 0.67679851553923,
+    "n_womens": 21387,
+    "n_control": 21306
+  },
+  "curves": {},
+  "notes": "Incremental sales per customer = average spend of the emailed group minus average spend of the no-email group, both including customers who spent nothing. Welch t-test and 95% normal-approximation CI; bootstrap CI (2,000 resamples) as a check."
+}

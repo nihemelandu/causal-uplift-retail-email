@@ -322,7 +322,7 @@ def render_q1(res: dict):
         st.caption("The gap between the two emails on " + " and ".join(unclear) +
                    " could be chance: its confidence interval includes zero.")
     else:
-        st.caption("The gap between the two emails is clear on all three measures.")
+        st.caption("The difference in measures between the two emails is clear on all two measures(visits and purchases), but not on spend per customer, the difference is not statistically significant.")
 
     # 2. The evidence: one bar chart per measure
     panels = []
@@ -363,13 +363,56 @@ def render_q1(res: dict):
         st.write(f"Sample-ratio check against an equal three-way split: p = {m['srm_p_value_equal_thirds']:.3f}.")
         st.write(res["notes"])
 
+# ---- Q2 layout -------------------------------------------------------------------
+Q2_CAMPAIGNS = {"mens": "Men's email", "womens": "Women's email"}
 
-RENDERERS = {"q1": render_q1}  # add RENDERERS["q3"] = render_q3 etc. as each layout is decided
+
+def q2_table(m: dict) -> pd.DataFrame:
+    """The Q2 answer: one column per campaign, one row per quantity."""
+    cols = {}
+    for key, label in Q2_CAMPAIGNS.items():
+        p = f"spend.{key}_vs_control."
+        cols[label] = {
+            "Customers emailed": f"{m[f'n_{key}']:,}",
+            "Spend per customer, emailed": f"${m[p + 'treatment']:.2f}",
+            "Spend per customer, no email": f"${m[p + 'control']:.2f}",
+            "Incremental sales per customer": f"${m[p + 'diff']:.2f}",
+            "95% confidence interval": f"${m[p + 'diff_ci_low']:.2f} to ${m[p + 'diff_ci_high']:.2f}",
+            "p-value": "<0.001" if m[p + "p_value"] < 0.001 else f"{m[p + 'p_value']:.3f}",
+        }
+    return pd.DataFrame(cols)
+
+
+def render_q2(res: dict):
+    m = res["metrics"]
+
+    # 1. The answer
+    st.success("**Incremental sales per customer:** " + "; ".join(
+        f"the {label} drove ${m[f'spend.{key}_vs_control.diff']:.2f} more" for key, label in Q2_CAMPAIGNS.items()) +
+        " than sending no email.")
+
+    # 2. The evidence
+    st.dataframe(q2_table(m))
+    st.caption("Incremental sales per customer is the average spend of customers who got the email minus the "
+               "average spend of customers who got no email. Both averages include customers who spent nothing. "
+               "Spend is about 99% zeros with a few large purchases, so treat the interval and p-value as "
+               "approximate.")
+    st.caption("A bootstrap check (resampling customers 2,000 times) gives " + " and ".join(
+        f"${m[f'spend.{key}_vs_control.boot_ci_low']:.2f} to ${m[f'spend.{key}_vs_control.boot_ci_high']:.2f} "
+        f"for the {label}" for key, label in Q2_CAMPAIGNS.items()) + ".")
+
+    # 3. Analyst details
+    with st.expander("Technical details"):
+        st.write(f"Customers: {m['n_mens']:,} Men's, {m['n_womens']:,} Women's, {m['n_control']:,} no email.")
+        st.write(res["notes"])
+
+
+RENDERERS = {"q1": render_q1, "q2": render_q2}  # add RENDERERS["q3"] = render_q3 etc. as each layout is decided
 
 
 # ---- page ----------------------------------------------------------------------------
 st.title("Who should we email?")
-st.caption("Finding the customers an email actually persuades, not those who would buy anyone.")
+st.caption("Finding the customers an email actually persuades, not those who would buy anyway.")
 
 results, errors = load_results(folder_signature())
 for fname, msg in errors.items():

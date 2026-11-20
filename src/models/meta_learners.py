@@ -57,3 +57,28 @@ class SLearner(UpliftModel):
     def __repr__(self) -> str:
         return (f"SLearner(base_learner={type(self.base_learner).__name__}, "
                 f"interactions={self.interactions})")
+
+
+    class TLearner(UpliftModel):
+        """Two model learners (Künzel et al., 2019).
+        - Train one model using customers who received the campaign.
+        - Train another model using customers who did not receive the campaign.
+        - Predict the purchase probability for each customer using both models.
+        - Calculate the difference.
+        """
+        
+        def __init__(self, base_learner, random_state: int | None = None):
+            super().__init__(random_state)
+            self.base_learner = base_learner
+
+        def _fit(self, X: pd.DataFrame, t: np.ndarray, y: np.ndarray) -> None:
+            self.model_treated_ = clone(self.base_learner).fit(X[t == 1], y[t == 1])
+            self.model_control_ = clone(self.base_learner).fit(X[t == 0], y[t == 0])
+
+        def _predict_uplift(self, X: pd.DataFrame) -> np.ndarray:
+            p1 = self.model_treated_.predict_proba(X)[:, 1]
+            p0 = self.model_control_.predict_proba(X)[:, 1]
+            return p1 - p0
+
+        def __repr__(self) -> str:
+            return f"TLearner(base_learner={type(self.base_learner).__name__})"
