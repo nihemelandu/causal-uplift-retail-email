@@ -20,7 +20,8 @@ Metrics, for each campaign (mens, womens) against the no-email group, named spen
     diff (+ _ci_low/_high)    incremental sales per customer, with its 95% CI
     p_value                   two-sided Welch t-test
     boot_ci_low / _high       95% bootstrap interval for diff (check on the normal-approximation CI)
-Also saved: n_mens, n_womens, n_control (customers in each group).
+Also saved: n_mens, n_womens, n_control (customers in each group) and buyers_mens, buyers_womens
+(customers in each emailed group who spent anything)..
 
 Method: Welch t-test and normal-approximation CI. Spend is about 99% zeros with a heavy right tail, so the
 bootstrap interval (2,000 resamples of customers, fixed seed) is saved as a check.
@@ -66,6 +67,7 @@ def main(path: str = PATH) -> None:
         metrics[f"spend.{campaign}_vs_control.boot_ci_low"] = low
         metrics[f"spend.{campaign}_vs_control.boot_ci_high"] = high
         metrics[f"n_{campaign}"] = len(treated)
+        metrics[f"buyers_{campaign}"] = int((treated > 0).sum())
     metrics["n_control"] = len(control)
 
     result = EvaluationResult(

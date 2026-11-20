@@ -372,14 +372,18 @@ def q2_table(m: dict) -> pd.DataFrame:
     cols = {}
     for key, label in Q2_CAMPAIGNS.items():
         p = f"spend.{key}_vs_control."
-        cols[label] = {
-            "Customers emailed": f"{m[f'n_{key}']:,}",
+        col = {"Customers emailed": f"{m[f'n_{key}']:,}"}
+        if f"buyers_{key}" in m:
+            col["Customers who bought after the email"] = (
+                f"{m[f'buyers_{key}']:,} ({m[f'buyers_{key}'] / m[f'n_{key}']:.2%})")
+        col.update({
             "Spend per customer, emailed": f"${m[p + 'treatment']:.2f}",
             "Spend per customer, no email": f"${m[p + 'control']:.2f}",
             "Incremental sales per customer": f"${m[p + 'diff']:.2f}",
             "95% confidence interval": f"${m[p + 'diff_ci_low']:.2f} to ${m[p + 'diff_ci_high']:.2f}",
             "p-value": "<0.001" if m[p + "p_value"] < 0.001 else f"{m[p + 'p_value']:.3f}",
-        }
+        })
+        cols[label] = col
     return pd.DataFrame(cols)
 
 

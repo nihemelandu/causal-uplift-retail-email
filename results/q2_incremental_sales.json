@@ -10,6 +10,7 @@
     "spend.mens_vs_control.boot_ci_low": 0.4988817012203282,
     "spend.mens_vs_control.boot_ci_high": 1.0602987076650392,
     "n_mens": 21307,
+    "buyers_mens": 267,
     "spend.womens_vs_control.treatment": 1.0772015710478329,
     "spend.womens_vs_control.control": 0.6527893551112363,
     "spend.womens_vs_control.diff": 0.4244122159365966,
@@ -19,6 +20,7 @@
     "spend.womens_vs_control.boot_ci_low": 0.17266615144014882,
     "spend.womens_vs_control.boot_ci_high": 0.67679851553923,
     "n_womens": 21387,
+    "buyers_womens": 189,
     "n_control": 21306
   },
   "curves": {},
